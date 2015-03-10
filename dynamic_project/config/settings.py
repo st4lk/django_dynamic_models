@@ -90,3 +90,20 @@ USE_TZ = True
 STATIC_URL = '/static/'
 
 AUTO_MODEL_YAML_FILE = os.path.join(BASE_DIR, 'models.yaml')
+
+
+OPENSHIFT_GEAR_NAME = os.environ.get('OPENSHIFT_GEAR_NAME', None)
+if OPENSHIFT_GEAR_NAME is not None:
+
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql_psycopg2',
+            'NAME': os.environ['OPENSHIFT_APP_NAME'],
+            'USER': os.environ['OPENSHIFT_POSTGRESQL_DB_USERNAME'],
+            'PASSWORD': os.environ['OPENSHIFT_POSTGRESQL_DB_PASSWORD'],
+            'HOST': os.environ['OPENSHIFT_POSTGRESQL_DB_HOST'],
+            'PORT': os.environ['OPENSHIFT_POSTGRESQL_DB_PORT'],
+            'TEST_CHARSET': 'utf8',
+        }
+    }
+    # STATIC_ROOT = join(os.environ['OPENSHIFT_REPO_DIR'], 'wsgi', 'static')

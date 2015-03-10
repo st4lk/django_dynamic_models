@@ -1,0 +1,3 @@
+#!/bin/bash
+cd ${OPENSHIFT_REPO_DIR}dynamic_project/
+uwsgi -s $OPENSHIFT_PYTHON_IP:$OPENSHIFT_PYTHON_PORT --socket-protocol http --module config.wsgi:application --pp $OPENSHIFT_REPO_DIR -d --pidfile $OPENSHIFT_TMP_DIR/uwsgi.pid

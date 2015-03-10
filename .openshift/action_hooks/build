@@ -1,0 +1,2 @@
+#!/bin/bash
+pip install --use-mirrors -r $OPENSHIFT_REPO_DIR/requirements.txt
