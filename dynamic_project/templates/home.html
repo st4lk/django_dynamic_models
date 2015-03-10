@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Django dymanic models</title>
+    <style type="text/css">
+        .error {
+            color: red;
+        }
+        .field_wrap input{
+            margin-left: 10px;
+        }
+    </style>
+    <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.3/themes/smoothness/jquery-ui.css">
+</head>
+<body>
+    <div>
+        <div id="models" style="width:200px;float:left;display:inline-block;">
+        <ul id="table_list">
+            {% for model in models %}
+                <li><a href="{% url 'dynamic_list' model=model.name %}">{{model.label}}</a></li>
+            {% endfor %}
+        </ul>
+        </div>
+        <div style="margin-left:200px;">
+            <div id="status_elem" style="float:right;margin-right:30px;"></div>
+            <div id="items_list_wrapper"></div>
+            <div id="items_create_wrapper"></div>
+        </div>
+    </div>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.3/jquery-ui.min.js"></script>
+    <script type="text/javascript">
+        // String.format
+        if (!String.prototype.format) {
+          String.prototype.format = function() {
+            var args = arguments;
+            return this.replace(/{(\d+)}/g, function(match, number) { 
+              return typeof args[number] != 'undefined'
+                ? args[number]
+                : match
+              ;
+            });
+          };
+        }
+
+        var status_elem = $('#status_elem');
+        var date_format = 'yy-mm-dd';
+
+        function append_row(wrapper, item_data, meta_data){
+            var tr = $("<tr></tr>");
+            tr.append("<td class='readonly_cell'>" + item_data.pk + "</td>");
+            for (var i=0; i<meta_data.fields.length; i++){
+                tr.append("<td>" + item_data.fields[meta_data.fields[i].name] + "</td>");
+            }
+            wrapper.append(tr);
+        };
+
+        function load_object_list(wrapper, data){
+          var table = $("<table border='1'></table>");
+          var thead = $("<thead></thead>");
+          var tbody = $("<tbody></tbody>");
+          var thead_tr = $("<tr></tr>");
+          thead_tr.append("<th>id</th>");
+          for (var i=0; i<data.meta.fields.length; i++){
+            thead_tr.append("<th>" + data.meta.fields[i].label + "</th>");
+          }
+          for (var i=0; i<data.data.length; i++){
+            append_row(tbody, data.data[i], data.meta);
+          }
+          thead.append(thead_tr);
+          table.append(thead);
+          table.append(tbody);
+          wrapper.append(table);
+        }
+
+        function get_field_widget(field_meta, value){
+            var field_attrs = "";
+            for (attr_name in field_meta.attrs)
+                field_attrs += "{0}={1} ".format(attr_name, field_meta.attrs[attr_name]);
+            if (field_meta.required)
+                field_attrs += "required";
+            var widget = $('<input type="{0}" name="{1}" {2}>'.format(
+                    field_meta.type, field_meta.name, field_attrs));
+            if (field_meta.widget == 'datepicker'){
+                widget.datepicker({dateFormat: date_format});
+            }
+            if (typeof value !== 'undefined'){
+                widget.val(value);
+            }
+            return widget;
+        }
+
+        function create_object_form(wrapper, meta){
+            var form = $('<form action="' + meta.url + '" method="POST"></form>');
+            var fieldset = $('<fieldset></fieldset>');
+            var legend = $('<legend>Новая запись в таблице "' + meta.verbose_plural + '"</legend>');
+            fieldset.append(legend);
+            for (var i=0; i<meta.fields.length; i++){
+                var field_meta = meta.fields[i];
+                widget = get_field_widget(field_meta);
+                var field_wrapper = $('<div id="id_{0}" class="field_wrap"></div>'.format(field_meta.name));
+                field_wrapper.append(field_meta.label);
+                field_wrapper.append(widget);
+                fieldset.append(field_wrapper);
+            }
+            fieldset.append('<input type="submit" value="Сохранить">');
+            form.append(fieldset);
+            wrapper.append(form);
+            return form;
+        }
+
+        function get_row_pk(tr){
+            // assert first cell in row is always id
+            return $(tr.find('td')[0]).text();
+        }
+
+        function get_cell_error_id(field_name, tr){
+            return "row_err_{0}_{1}".format(get_row_pk(tr), field_name);
+        }
+
+        function get_form_field_error_id(field_name, form){
+            return 'id_' + field_name;
+        }
+
+        function show_errors(wrapper, errors, get_error_id){
+            for (var field_name in errors){
+                field_wrapper = wrapper.find('#' + get_error_id(field_name, wrapper));
+                if (field_wrapper.length){
+                    for (var i=0; i<errors[field_name].length; i++){
+                        field_wrapper.append('<span class="error">' + errors[field_name][i] + '</span>');
+                    }
+                }
+            }
+        }
+
+        function get_field_meta_by_name(file_name, meta_data){
+            for (var i=0; i<meta_data.fields.length; i++){
+                if (meta_data.fields[i].name == field_name){
+                    return meta_data.fields[i]
+                }
+            }
+            return null;
+        }
+
+        function get_inputs_as_dict(parent_elem){
+            var inputs = parent_elem.find('input');
+            var data = {};
+            for (var i=0; i<inputs.length; i++){
+                inp = $(inputs[i]);
+                data[inp.attr('name')] = inp.val();
+            }
+            return data;
+        }
+
+        function validate_data(data_to_validate, meta_data){
+            // returns errors similiar to django format, as returned by API:
+            // error[field_name]: [error1, error2, ...]
+            // return empty dict, if not erorrs found
+
+            // server will validate data anyway, this function just catch
+            // typos before sending
+            var errors = {};
+            for (field_name in data_to_validate){
+                var field_meta = get_field_meta_by_name(field_name, meta_data);
+                if (field_meta){
+                    var field_value = data_to_validate[field_name];
+                    if (!field_value && field_meta.required){
+                        errors[field_name] = ["Обязательное поле", ];
+                        continue
+                    }
+                    // int
+                    if (field_meta.type == 'number'){
+                        if (isNaN(field_value)){
+                            errors[field_name] = ["Введите число", ];
+                            continue;
+                        }
+                    }
+                    // date
+                    if (field_meta.widget == 'datepicker'){
+                        var err_found = false;
+                        try {
+                            if (! $.datepicker.parseDate(date_format, field_value))
+                                err_found = true;
+                        }
+                        catch(err) {err_found = true;}
+                        if (err_found)
+                            errors[field_name] = ["Неверный формат даты", ];
+                    }
+                }
+            }
+            return errors;
+        }
+
+        function attach_handler_create_form(form, wrapper_list, wrapper_form, meta_data){
+            form.submit(function(){
+                form.find('span.error').remove();
+
+                var data = get_inputs_as_dict(form);
+                var errors = validate_data(data, meta_data);
+                if (! $.isEmptyObject(errors)){
+                    show_errors(form, errors, get_form_field_error_id);
+                    return false;
+                }
+
+                status_elem.text('сохранение...');
+                $.ajax({
+                  async: true,
+                  traditional: true,
+                  dataType: 'json',
+                  data: form.serialize(),
+                  error: function(XHR, textStatus, errorThrown){
+                    status_elem.text(XHR.status + ": " + errorThrown);
+                  },
+                  success: function(data, textStatus) {
+                    if (!data.error || data.error.length==0){
+                        append_row(wrapper_list.find('tbody'), data.data, data.meta);
+                        status_elem.text('сохранено');
+                    } else {
+                        show_errors(form, data.error, get_form_field_error_id);
+                        status_elem.text('ошибка ввода данных');
+                    }
+                  },
+                  complete: function(){},
+                  type: 'POST',
+                  url: form.attr('action')
+                });
+                return false;
+            });
+        }
+
+        function submit_row(tr, meta_data){
+            tr.find('.error').remove();
+            var data = get_inputs_as_dict(tr);
+
+            var errors = validate_data(data, meta_data);
+            if (! $.isEmptyObject(errors)){
+                show_errors(tr, errors, get_cell_error_id);
+                return false;
+            }
+
+            status_elem.text("сохранение ...");
+            $.ajax({
+              async: true,
+              traditional: true,
+              dataType: 'json',
+              data: $.param(data),
+              error: function(XHR, textStatus, errorThrown){
+                status_elem.text(XHR.status + ": " + errorThrown);
+              },
+              success: function(data, textStatus) {
+                if (!data.error || data.error.length==0){
+                    status_elem.text("сохранено");
+                } else {
+                    status_elem.text("ошибка ввода данных");
+                    show_errors(tr, data.error, get_cell_error_id);
+                }
+              },
+              complete: function(){},
+              type: 'POST',  // for simplicity, but it is PATCH in terms of REST API
+              url: meta_data.url + get_row_pk(tr) + '/'
+            });
+        }
+
+        function attach_row_handler(wrapper_list, meta_data){
+            wrapper_list.find('table').click(function(event){
+                if (event.target.nodeName == 'TD'){
+                    var td = $(event.target);
+                    if (td.attr('class') && td.attr('class').indexOf("readonly_cell") >= 0)
+                        return;  // skip id cells
+                    if (td.find('input').length)
+                        return; // already as input
+                    var field_meta = meta_data.fields[td.index() - 1];
+                    var widget = get_field_widget(field_meta, td.text());
+                    td.empty();
+                    td.append(widget);
+                    var tr = td.parent();
+                    td.append('<div class="cell_error" id="{0}"></div>'.format(
+                        get_cell_error_id(field_meta.name, tr)));
+                    widget.change(function(){
+                        submit_row(tr, meta_data);
+                    });
+                }
+            });
+        }
+
+        $('#table_list li a').click(function(event){
+            var wrapper_list = $("#items_list_wrapper");
+            var wrapper_form = $("#items_create_wrapper");
+            wrapper_list.empty();
+            wrapper_form.empty();
+            status_elem.text("загрузка...");
+
+            $.ajax({
+              async: true,
+              traditional: true,
+              dataType: 'json',
+              timeout: 0,
+              error: function(XHR, textStatus, errorThrown){
+                status_elem.text(XHR.status + ": " + errorThrown);
+              },
+              success: function(data, textStatus) {
+                wrapper_list.empty();
+                if (!data.error || data.error.length==0){
+                    load_object_list(wrapper_list, data);
+                    var form = create_object_form(wrapper_form, data.meta);
+                    attach_handler_create_form(form, wrapper_list, wrapper_form, data.meta);
+                    attach_row_handler(wrapper_list, data.meta);
+                    status_elem.text("данные загружены");
+                } else {
+                  status_elem.text("ошибка ввода данных");
+                }
+              },
+              complete: function(){},
+              type: 'GET',
+              url: event.target.href
+            });
+            return false;
+        })
+
+        // Start csrf protection code
+        function getCookie(name) {
+            var cookieValue = null;
+            if (document.cookie && document.cookie != '') {
+                var cookies = document.cookie.split(';');
+                for (var i = 0; i < cookies.length; i++) {
+                    var cookie = jQuery.trim(cookies[i]);
+                    // Does this cookie string begin with the name we want?
+                    if (cookie.substring(0, name.length + 1) == (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+        var csrftoken = getCookie('csrftoken');
+        function csrfSafeMethod(method) {
+            // these HTTP methods do not require CSRF protection
+            return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
+        }
+        $.ajaxSetup({
+            beforeSend: function(xhr, settings) {
+                if (!csrfSafeMethod(settings.type) && !this.crossDomain) {
+                    xhr.setRequestHeader("X-CSRFToken", csrftoken);
+                }
+            }
+        });
+        // End csrf protection code
+
+        $(function() {
+            var links = $('#table_list li a');
+            if (links.length > 0){
+                // load data on home page
+                $(links[0]).trigger('click');
+            }
+        });
+    </script>
+</body>
+</html>
