@@ -79,6 +79,7 @@ class DynamicMixin(object):
         if serialize:
             result['data'] = serializers.serialize('python', result['data'])
         if self.request.method in self.single_object_methods:
+            # django serializers works with list, not with single object
             result['data'] = result['data'][0]
         result['error'] = context.get('error', None)
         result['meta'] = self.get_model_meta_data()
