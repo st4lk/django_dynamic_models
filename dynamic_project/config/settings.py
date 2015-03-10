@@ -17,6 +17,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 # See https://docs.djangoproject.com/en/1.6/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
+# ok, in production is replaced (see openshift section)
 SECRET_KEY = '#yat59m#)deqfgzx(4ut7!+t5wuxj(8mz9==ojq+6ah9^bk6ja'
 
 # SECURITY WARNING: don't run with debug turned on in production!
@@ -107,3 +108,4 @@ if OPENSHIFT_GEAR_NAME is not None:
         }
     }
     STATIC_ROOT = os.path.join(os.environ['OPENSHIFT_REPO_DIR'], 'wsgi', 'static')
+    SECRET_KEY = os.environ['DJANGO_SECRET_KEY']
