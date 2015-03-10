@@ -106,4 +106,4 @@ if OPENSHIFT_GEAR_NAME is not None:
             'TEST_CHARSET': 'utf8',
         }
     }
-    STATIC_ROOT = os.join(os.environ['OPENSHIFT_REPO_DIR'], 'wsgi', 'static')
+    STATIC_ROOT = os.path.join(os.environ['OPENSHIFT_REPO_DIR'], 'wsgi', 'static')
